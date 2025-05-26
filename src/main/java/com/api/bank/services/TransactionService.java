@@ -9,8 +9,12 @@ import com.api.bank.exceptions.transaction.CredentialsInvalidException;
 import com.api.bank.exceptions.transaction.InsufficientBalanceException;
 import com.api.bank.exceptions.transaction.SameAccountException;
 import com.api.bank.exceptions.transaction.UnauthorizedTransactionException;
+import com.api.bank.kafka.event.TransactionCreatedEvent;
+import com.api.bank.kafka.event.TransactionEvent;
+import com.api.bank.kafka.producer.TransactionProducer;
 import com.api.bank.repositories.TransactionRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -29,6 +33,13 @@ public class TransactionService {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private TransactionProducer transactionProducer;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
+
 
     public List<Transaction> getTransactions() {
         return this.transactionRepository.findAll();
@@ -84,7 +95,18 @@ public class TransactionService {
                 .amount(transactionPostDTO.getAmount())
                 .build();
 
-        return this.transactionRepository.save(transaction);
+        Transaction savedTransaction = this.transactionRepository.save(transaction);
+
+        TransactionEvent event = new TransactionEvent(
+                fromAccount.getNumber(),
+                toAccount.getNumber(),
+                transactionPostDTO.getAmount(),
+                TransactionStatus.COMPLETED.name()
+        );
+
+        eventPublisher.publishEvent(new TransactionCreatedEvent(event));
+
+        return savedTransaction;
     }
 
 }
