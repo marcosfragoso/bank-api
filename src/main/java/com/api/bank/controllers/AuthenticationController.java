@@ -7,6 +7,7 @@ import com.api.bank.dtos.RegisterDTO;
 import com.api.bank.repositories.UserRepository;
 import com.api.bank.security.TokenService;
 import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -20,6 +21,7 @@ import com.api.bank.entities.user.User;
 
 @RestController
 @RequestMapping("auth")
+@Slf4j
 public class AuthenticationController {
 
     @Autowired
@@ -33,22 +35,34 @@ public class AuthenticationController {
 
     @PostMapping("/login")
     public ResponseEntity login(@RequestBody @Valid AuthenticationDTO data){
-        var usernamePassword = new UsernamePasswordAuthenticationToken(data.email(), data.password());
-        var auth = this.authenticationManager.authenticate(usernamePassword);
+        log.info("Login attempt for user: {}", data.email());
+        try {
+            var usernamePassword = new UsernamePasswordAuthenticationToken(data.email(), data.password());
+            var auth = this.authenticationManager.authenticate(usernamePassword);
 
-        var token = tokenService.generateToken((User) auth.getPrincipal());
+            var token = tokenService.generateToken((User) auth.getPrincipal());
 
-        return ResponseEntity.ok(new LoginResponseDTO(token));
+            log.info("User '{}' authenticated successfully", data.email());
+            return ResponseEntity.ok(new LoginResponseDTO(token));
+        } catch (Exception e) {
+            log.warn("Failed login attempt for user '{}': {}", data.email(), e.getMessage());
+            return ResponseEntity.status(401).build();
+        }
     }
 
     @PostMapping("/register")
     public ResponseEntity register(@RequestBody @Valid RegisterDTO data){
-        if (this.repository.findByEmail(data.email()) != null) return ResponseEntity.badRequest().build();
+        log.info("Registration attempt for user: {}", data.email());
+        if (this.repository.findByEmail(data.email()) != null) {
+            log.warn("Registration failed: email '{}' already registered", data.email());
+            return ResponseEntity.badRequest().build();
+        }
 
         String encryptedPassword = new BCryptPasswordEncoder().encode(data.password());
         User newUser = new User(data.email(), encryptedPassword, data.role());
 
         this.repository.save(newUser);
+        log.info("User '{}' registered successfully", data.email());
 
         return ResponseEntity.ok().build();
     }
